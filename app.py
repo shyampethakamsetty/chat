@@ -10,17 +10,18 @@ from datetime import datetime
 # Constants
 API_BASE_URL = 'https://cwd-dq7n.onrender.com'
 
+# Global message queue for thread-safe communication
+message_queue = queue.Queue()
+
 # Initialize session state variables
 if 'messages' not in st.session_state:
     st.session_state['messages'] = []
 if 'logs' not in st.session_state:
     st.session_state['logs'] = []
-if 'message_queue' not in st.session_state:
-    st.session_state['message_queue'] = queue.Queue()
 
 def add_log(message, type='info'):
     timestamp = datetime.now().strftime('%H:%M:%S')
-    st.session_state['message_queue'].put({
+    message_queue.put({
         'type': 'log',
         'data': {
             'timestamp': timestamp,
@@ -30,7 +31,7 @@ def add_log(message, type='info'):
     })
 
 def add_chat_message(message, is_user=False):
-    st.session_state['message_queue'].put({
+    message_queue.put({
         'type': 'chat',
         'data': {
             'content': message,
@@ -39,8 +40,8 @@ def add_chat_message(message, is_user=False):
     })
 
 def process_message_queue():
-    while not st.session_state['message_queue'].empty():
-        msg = st.session_state['message_queue'].get()
+    while not message_queue.empty():
+        msg = message_queue.get()
         if msg['type'] == 'log':
             st.session_state['logs'].append(msg['data'])
         elif msg['type'] == 'chat':

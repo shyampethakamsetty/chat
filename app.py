@@ -9,22 +9,26 @@ from datetime import datetime
 # Constants
 API_BASE_URL = 'https://cwd-dq7n.onrender.com'
 
-# Initialize session state
+# Initialize session state variables
 if 'messages' not in st.session_state:
-    st.session_state.messages = []
+    st.session_state['messages'] = []
 if 'logs' not in st.session_state:
-    st.session_state.logs = []
+    st.session_state['logs'] = []
 
 def add_log(message, type='info'):
     timestamp = datetime.now().strftime('%H:%M:%S')
-    st.session_state.logs.append({
+    if 'logs' not in st.session_state:
+        st.session_state['logs'] = []
+    st.session_state['logs'].append({
         'timestamp': timestamp,
         'message': message,
         'type': type
     })
 
 def add_chat_message(message, is_user=False):
-    st.session_state.messages.append({
+    if 'messages' not in st.session_state:
+        st.session_state['messages'] = []
+    st.session_state['messages'].append({
         'content': message,
         'is_user': is_user
     })
@@ -102,14 +106,16 @@ with col1:
     # Chat input
     query = st.text_input("Enter your stock analysis query...", key="query_input")
     if st.button("Send") or query:
-        send_query(query)
-        st.session_state.query_input = ""
+        if query:  # Only send if there's a query
+            send_query(query)
+            # Instead of modifying the widget directly, use a callback
+            st.rerun()
     
     # Chat messages
     st.subheader("Messages")
     chat_container = st.container()
     with chat_container:
-        for msg in st.session_state.messages:
+        for msg in st.session_state.get('messages', []):
             if msg['is_user']:
                 st.chat_message("user").write(msg['content'])
             else:
@@ -133,7 +139,7 @@ with col2:
     st.subheader("Logs")
     log_container = st.container()
     with log_container:
-        for log in st.session_state.logs:
+        for log in st.session_state.get('logs', []):
             if log['type'] == 'error':
                 st.error(f"[{log['timestamp']}] {log['message']}")
             elif log['type'] == 'warning':

@@ -1,15 +1,21 @@
 import streamlit as st
 import requests
+import websocket
+import json
+import threading
 from datetime import datetime
 
 # Constants
 API_BASE_URL = 'https://cwd-dq7n.onrender.com'
+WS_URL = 'wss://cwd-dq7n.onrender.com/ws'
 
 # Initialize session state
 if 'messages' not in st.session_state:
     st.session_state.messages = []
 if 'logs' not in st.session_state:
     st.session_state.logs = []
+if 'ws' not in st.session_state:
+    st.session_state.ws = None
 
 def add_log(message, type='info'):
     timestamp = datetime.now().strftime('%H:%M:%S')
@@ -24,6 +30,51 @@ def add_chat_message(message, is_user=False):
         'message': message,
         'is_user': is_user
     })
+
+def on_message(ws, message):
+    try:
+        data = json.loads(message)
+        if data['type'] == 'chat_response':
+            add_chat_message(data['data'])
+            add_log('Response received', 'success')
+        elif data['type'] == 'process_started':
+            add_log(f"Process started: {data['data']}", 'info')
+        elif data['type'] == 'output':
+            add_log(data['data'], 'info')
+        elif data['type'] == 'warning':
+            add_log(data['data'], 'warning')
+        elif data['type'] == 'error':
+            add_log(f"Error: {data['data']}", 'error')
+        elif data['type'] == 'process_complete':
+            add_log(f"Process completed: {data['data']}", 'success')
+    except Exception as e:
+        add_log(f"Error processing message: {str(e)}", 'error')
+
+def on_error(ws, error):
+    add_log(f"WebSocket error: {str(error)}", 'error')
+
+def on_close(ws, close_status_code, close_msg):
+    add_log("WebSocket disconnected. Reconnecting...", 'error')
+    connect_websocket()
+
+def on_open(ws):
+    add_log("WebSocket connected", 'success')
+
+def connect_websocket():
+    if st.session_state.ws is None:
+        ws = websocket.WebSocketApp(WS_URL,
+                                  on_message=on_message,
+                                  on_error=on_error,
+                                  on_close=on_close,
+                                  on_open=on_open)
+        st.session_state.ws = ws
+        ws_thread = threading.Thread(target=ws.run_forever)
+        ws_thread.daemon = True
+        ws_thread.start()
+
+# Initialize WebSocket connection
+if st.session_state.ws is None:
+    connect_websocket()
 
 # Streamlit UI
 st.title("Stock Analysis Dashboard")
@@ -48,17 +99,11 @@ with col1:
                     headers={"Content-Type": "application/json"}
                 )
                 data = response.json()
-                add_log(f"Response received: {data}", 'info')
+                add_log(f"Request sent: {data}", 'info')
                 
                 if data.get('status') == 'processing':
                     add_log('Query processing started...', 'info')
                     add_chat_message("Processing your query...")
-                elif data.get('response'):
-                    add_chat_message(data['response'])
-                    add_log('Response received successfully', 'success')
-                else:
-                    add_chat_message("No response data received")
-                    add_log('No response data in the response', 'warning')
             except Exception as e:
                 add_log(f"Error: {str(e)}", 'error')
                 add_chat_message('Error processing query. Please try again.')

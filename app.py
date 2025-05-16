@@ -4,6 +4,7 @@ import json
 import websocket
 import threading
 import time
+import queue
 from datetime import datetime
 
 # Constants
@@ -14,24 +15,36 @@ if 'messages' not in st.session_state:
     st.session_state['messages'] = []
 if 'logs' not in st.session_state:
     st.session_state['logs'] = []
+if 'message_queue' not in st.session_state:
+    st.session_state['message_queue'] = queue.Queue()
 
 def add_log(message, type='info'):
     timestamp = datetime.now().strftime('%H:%M:%S')
-    if 'logs' not in st.session_state:
-        st.session_state['logs'] = []
-    st.session_state['logs'].append({
-        'timestamp': timestamp,
-        'message': message,
-        'type': type
+    st.session_state['message_queue'].put({
+        'type': 'log',
+        'data': {
+            'timestamp': timestamp,
+            'message': message,
+            'type': type
+        }
     })
 
 def add_chat_message(message, is_user=False):
-    if 'messages' not in st.session_state:
-        st.session_state['messages'] = []
-    st.session_state['messages'].append({
-        'content': message,
-        'is_user': is_user
+    st.session_state['message_queue'].put({
+        'type': 'chat',
+        'data': {
+            'content': message,
+            'is_user': is_user
+        }
     })
+
+def process_message_queue():
+    while not st.session_state['message_queue'].empty():
+        msg = st.session_state['message_queue'].get()
+        if msg['type'] == 'log':
+            st.session_state['logs'].append(msg['data'])
+        elif msg['type'] == 'chat':
+            st.session_state['messages'].append(msg['data'])
 
 def execute_tool(tool_name):
     try:
@@ -61,17 +74,6 @@ def send_query(query):
         add_log(f"Error: {str(e)}", 'error')
         add_chat_message('Error processing query. Please try again.')
 
-# WebSocket connection
-def websocket_thread():
-    ws = websocket.WebSocketApp(
-        f"wss://cwd-dq7n.onrender.com/ws",
-        on_message=lambda ws, msg: handle_websocket_message(msg),
-        on_error=lambda ws, err: add_log(f"WebSocket error: {str(err)}", 'error'),
-        on_close=lambda ws: add_log("WebSocket disconnected", 'warning'),
-        on_open=lambda ws: add_log("WebSocket connected", 'success')
-    )
-    ws.run_forever()
-
 def handle_websocket_message(message):
     try:
         data = json.loads(message)
@@ -85,6 +87,21 @@ def handle_websocket_message(message):
     except Exception as e:
         add_log(f"Error processing message: {str(e)}", 'error')
 
+def websocket_thread():
+    while True:
+        try:
+            ws = websocket.WebSocketApp(
+                f"wss://cwd-dq7n.onrender.com/ws",
+                on_message=lambda ws, msg: handle_websocket_message(msg),
+                on_error=lambda ws, err: add_log(f"WebSocket error: {str(err)}", 'error'),
+                on_close=lambda ws: add_log("WebSocket disconnected", 'warning'),
+                on_open=lambda ws: add_log("WebSocket connected", 'success')
+            )
+            ws.run_forever()
+        except Exception as e:
+            add_log(f"WebSocket connection error: {str(e)}", 'error')
+            time.sleep(5)  # Wait before reconnecting
+
 # Start WebSocket connection in a separate thread
 threading.Thread(target=websocket_thread, daemon=True).start()
 
@@ -97,6 +114,9 @@ st.set_page_config(
 
 st.title("📈 Stock Analysis Dashboard")
 
+# Process any pending messages
+process_message_queue()
+
 # Create two columns
 col1, col2 = st.columns([2, 1])
 
@@ -108,7 +128,6 @@ with col1:
     if st.button("Send") or query:
         if query:  # Only send if there's a query
             send_query(query)
-            # Instead of modifying the widget directly, use a callback
             st.rerun()
     
     # Chat messages

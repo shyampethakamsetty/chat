@@ -5,6 +5,8 @@ import threading
 import time
 import requests
 from datetime import datetime
+from queue import Queue
+import queue
 
 # Constants
 API_BASE_URL = 'https://cwd-dq7n.onrender.com'
@@ -15,6 +17,8 @@ if 'messages' not in st.session_state:
     st.session_state.messages = []
 if 'logs' not in st.session_state:
     st.session_state.logs = []
+if 'message_queue' not in st.session_state:
+    st.session_state.message_queue = Queue()
 
 def add_log(message, type='info'):
     timestamp = datetime.now().strftime('%H:%M:%S')
@@ -30,35 +34,63 @@ def add_chat_message(message, is_user=False):
         'is_user': is_user
     })
 
+def process_queue():
+    try:
+        while True:
+            try:
+                message = st.session_state.message_queue.get_nowait()
+                if message['type'] == 'log':
+                    add_log(message['message'], message['log_type'])
+                elif message['type'] == 'chat':
+                    add_chat_message(message['message'], message['is_user'])
+            except queue.Empty:
+                break
+    except Exception as e:
+        st.error(f"Error processing queue: {str(e)}")
+
+def queue_log(message, type='info'):
+    st.session_state.message_queue.put({
+        'type': 'log',
+        'message': message,
+        'log_type': type
+    })
+
+def queue_chat_message(message, is_user=False):
+    st.session_state.message_queue.put({
+        'type': 'chat',
+        'message': message,
+        'is_user': is_user
+    })
+
 def on_message(ws, message):
     try:
         data = json.loads(message)
         if data['type'] == 'chat_response':
-            add_chat_message(json.dumps(data['data'], indent=2))
-            add_log('Chat response received', 'success')
+            queue_chat_message(json.dumps(data['data'], indent=2))
+            queue_log('Chat response received', 'success')
         elif data['type'] == 'process_started':
-            add_log(f"Process started: {data['data']}", 'info')
+            queue_log(f"Process started: {data['data']}", 'info')
         elif data['type'] == 'output':
-            add_log(data['data'], 'info')
+            queue_log(data['data'], 'info')
         elif data['type'] == 'warning':
-            add_log(data['data'], 'warning')
+            queue_log(data['data'], 'warning')
         elif data['type'] == 'error':
-            add_log(f"Error: {data['data']}", 'error')
+            queue_log(f"Error: {data['data']}", 'error')
         elif data['type'] == 'process_complete':
-            add_log(f"Process completed: {data['data']}", 'success')
+            queue_log(f"Process completed: {data['data']}", 'success')
     except Exception as e:
-        add_log(f"Error processing message: {str(e)}", 'error')
+        queue_log(f"Error processing message: {str(e)}", 'error')
 
 def on_error(ws, error):
-    add_log(f"WebSocket error: {str(error)}", 'error')
+    queue_log(f"WebSocket error: {str(error)}", 'error')
 
 def on_close(ws, close_status_code, close_msg):
-    add_log("WebSocket disconnected. Reconnecting...", 'error')
+    queue_log("WebSocket disconnected. Reconnecting...", 'error')
     time.sleep(3)
     connect_websocket()
 
 def on_open(ws):
-    add_log("WebSocket connected", 'success')
+    queue_log("WebSocket connected", 'success')
 
 def connect_websocket():
     ws = websocket.WebSocketApp(WS_URL,
@@ -74,7 +106,12 @@ def start_websocket_thread():
     websocket_thread.start()
 
 # Initialize WebSocket connection
-start_websocket_thread()
+if 'websocket_started' not in st.session_state:
+    start_websocket_thread()
+    st.session_state.websocket_started = True
+
+# Process any pending messages from the WebSocket thread
+process_queue()
 
 # Streamlit UI
 st.title("Stock Analysis Dashboard")

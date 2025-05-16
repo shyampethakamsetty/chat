@@ -48,9 +48,17 @@ with col1:
                     headers={"Content-Type": "application/json"}
                 )
                 data = response.json()
+                add_log(f"Response received: {data}", 'info')
+                
                 if data.get('status') == 'processing':
                     add_log('Query processing started...', 'info')
                     add_chat_message("Processing your query...")
+                elif data.get('response'):
+                    add_chat_message(data['response'])
+                    add_log('Response received successfully', 'success')
+                else:
+                    add_chat_message("No response data received")
+                    add_log('No response data in the response', 'warning')
             except Exception as e:
                 add_log(f"Error: {str(e)}", 'error')
                 add_chat_message('Error processing query. Please try again.')
@@ -73,8 +81,10 @@ with col1:
                 data = response.json()
                 if data.get('status') == 'processing':
                     add_log("YouTube Fetcher process started...", 'info')
+                    add_chat_message("YouTube Fetcher process started...")
             except Exception as e:
                 add_log(f"Error executing YouTube Fetcher: {str(e)}", 'error')
+                add_chat_message("Error executing YouTube Fetcher")
         
         if st.button("Transcript Analyzer"):
             add_log("Executing Transcript Analyzer...")
@@ -83,8 +93,10 @@ with col1:
                 data = response.json()
                 if data.get('status') == 'processing':
                     add_log("Transcript Analyzer process started...", 'info')
+                    add_chat_message("Transcript Analyzer process started...")
             except Exception as e:
                 add_log(f"Error executing Transcript Analyzer: {str(e)}", 'error')
+                add_chat_message("Error executing Transcript Analyzer")
     
     with col2:
         if st.button("Yahoo Finance"):
@@ -94,8 +106,10 @@ with col1:
                 data = response.json()
                 if data.get('status') == 'processing':
                     add_log("Yahoo Finance process started...", 'info')
+                    add_chat_message("Yahoo Finance process started...")
             except Exception as e:
                 add_log(f"Error executing Yahoo Finance: {str(e)}", 'error')
+                add_chat_message("Error executing Yahoo Finance")
         
         if st.button("Process Analysis"):
             add_log("Executing Process Analysis...")
@@ -104,8 +118,10 @@ with col1:
                 data = response.json()
                 if data.get('status') == 'processing':
                     add_log("Process Analysis started...", 'info')
+                    add_chat_message("Process Analysis started...")
             except Exception as e:
                 add_log(f"Error executing Process Analysis: {str(e)}", 'error')
+                add_chat_message("Error executing Process Analysis")
 
 with col2:
     st.subheader("Logs")

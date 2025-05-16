@@ -10,14 +10,10 @@ from datetime import datetime
 # Constants
 API_BASE_URL = 'https://cwd-dq7n.onrender.com'
 
-# Global message queue for thread-safe communication
+# Global variables for thread-safe communication
 message_queue = queue.Queue()
-
-# Initialize session state variables
-if 'messages' not in st.session_state:
-    st.session_state['messages'] = []
-if 'logs' not in st.session_state:
-    st.session_state['logs'] = []
+logs = []
+messages = []
 
 def add_log(message, type='info'):
     timestamp = datetime.now().strftime('%H:%M:%S')
@@ -43,9 +39,9 @@ def process_message_queue():
     while not message_queue.empty():
         msg = message_queue.get()
         if msg['type'] == 'log':
-            st.session_state['logs'].append(msg['data'])
+            logs.append(msg['data'])
         elif msg['type'] == 'chat':
-            st.session_state['messages'].append(msg['data'])
+            messages.append(msg['data'])
 
 def execute_tool(tool_name):
     try:
@@ -127,7 +123,7 @@ with col1:
     # Chat input
     query = st.text_input("Enter your stock analysis query...", key="query_input")
     if st.button("Send") or query:
-        if query:  # Only send if there's a query
+        if query and not any(msg['content'] == query and msg['is_user'] for msg in messages):  # Only send if query is new
             send_query(query)
             st.rerun()
     
@@ -135,7 +131,7 @@ with col1:
     st.subheader("Messages")
     chat_container = st.container()
     with chat_container:
-        for msg in st.session_state.get('messages', []):
+        for msg in messages:
             if msg['is_user']:
                 st.chat_message("user").write(msg['content'])
             else:
@@ -159,7 +155,7 @@ with col2:
     st.subheader("Logs")
     log_container = st.container()
     with log_container:
-        for log in st.session_state.get('logs', []):
+        for log in logs:
             if log['type'] == 'error':
                 st.error(f"[{log['timestamp']}] {log['message']}")
             elif log['type'] == 'warning':
